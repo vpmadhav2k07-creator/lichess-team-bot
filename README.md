@@ -1,0 +1,1 @@
+# lichess-team-bot
