@@ -7,8 +7,8 @@ import requests
 # =====================================================================
 # IMPORTANT: Use a regular user account token here. 
 # Make sure you checked 'msg:write' when generating this token!
-LICHESS_TOKEN = "YOUR_PERSONAL_ACCESS_TOKEN"  
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"         
+LICHESS_TOKEN = "lip_hWWX4phx2UN37HBL69c4"  
+GEMINI_API_KEY = "AQ.Ab8RN6LZz0DezgnfO3tNKVyv8VTEobJC_lpOPKJzyPgCzNr8cA"         
 MY_USERNAME = "RegularStrongOwl".lower()          # Your account name in lowercase
 # =====================================================================
 
