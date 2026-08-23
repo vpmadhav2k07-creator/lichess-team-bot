@@ -3,8 +3,8 @@ import json
 import time
 import requests
 
-LICHESS_TOKEN = os.environ.get("LICHESS_TOKEN", "lip_hWWX4phx2UN37HBL69c4")  
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6LZz0DezgnfO3tNKVyv8VTEobJC_lpOPKJzyPgCzNr8cA")         
+LICHESS_TOKEN = "your_actual_lichess_token_here"  
+GEMINI_API_KEY = "your_actual_gemini_token_here"        
 MY_USERNAME = "RegularStrongOwl".lower()          
 
 LICHESS_HEADERS = {
