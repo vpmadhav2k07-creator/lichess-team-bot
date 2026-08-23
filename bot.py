@@ -2,11 +2,15 @@ import json
 import time
 import requests
 
-# Configuration
-LICHESS_TOKEN = "" 
-GEMINI_API_KEY = "AQ.Ab8RN6LZz0DezgnfO3tNKVyv8VTEobJC_lpOPKJzyPgCzNr8cA"
-BOT_USERNAME = "MahiMahadev-2012"
-TEAM_ID = "attack-at-the-knightmares"
+# =====================================================================
+# ⚙️ CONFIGURATION: SWAP THESE VALUES WITH YOUR REAL DETAILS
+# =====================================================================
+# WARNING: Do NOT upgrade this account to a Lichess 'BOT'. Keep it a regular user.
+LICHESS_TOKEN = "YOUR_PERSONAL_ACCESS_TOKEN"  # Must have 'web:inbox' and 'team:read' scopes
+GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"         # From Google AI Studio
+MY_USERNAME = "Ask-AATK-bot"                   # Your chatbot account username
+TEAM_ID = "attack-at-the-knightmares"          # Leave exactly like this
+# =====================================================================
 
 LICHESS_HEADERS = {
     "Authorization": f"Bearer {LICHESS_TOKEN}",
@@ -15,59 +19,110 @@ LICHESS_HEADERS = {
 
 SYSTEM_INSTRUCTION = f"""
 You are the official conversational AI assistant for the Lichess team 'Attack at the knightmares'. 
-A player just asked something in the team chat. You are replying to them PRIVATELY via inbox PM.
-Keep your answers under 3 short sentences. Never give active game move advice.
+A user asked something in the public team chat, and you are replying directly in the chat room.
+Keep your answers brief, friendly, and under 3 short sentences. 
+Never offer to play games. Never give live move advice. 
 """
 
-def send_private_message(username, text):
-    url = f"https://lichess.org/api/inbox/{username}"
+def post_to_team_chat(text):
+    """Sends a public message back into the team chat room channel."""
+    url = f"https://lichess.org/api/team/{TEAM_ID}/chat"
     data = {"text": text}
-    response = requests.post(url, headers=LICHESS_HEADERS, data=data)
-    return response.status_code
+    try:
+        response = requests.post(url, headers=LICHESS_HEADERS, data=data)
+        return response.status_code
+    except Exception as e:
+        print(f"[!] Error posting to team chat: {e}")
+        return 500
 
 def get_ai_chat_response(player_name, player_message):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    payload = {
-        "contents": [{"parts": [{"text": f"Player '{player_name}' says in team chat: {player_message}"}]}],
-        "systemInstruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 150}
+    """Generates an answer using the direct Google Gemini 2.5 Flash API."""
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+   payload = {
+        "contents": [
+            {
+                "parts": [{"text": f"Player '{player_name}' said in team chat: {player_message}"}]
+            }
+        ],
+        "systemInstruction": {
+            "parts": [{"text": SYSTEM_INSTRUCTION}]
+        },
+        "generationConfig": {
+            "temperature": 0.7, 
+            "maxOutputTokens": 150
+        },
     }
+
     try:
         response = requests.post(url, json=payload, timeout=10)
-        response_data = response.json()
-        if "candidates" in response_data and response_data["candidates"]:
-            return response_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        return "Go team Attack at the knightmares! 🐴⚔️"
+        response.raise_for_status() 
+        
+        response_json = response.json()
+        ai_text = response_json['candidates'][0]['content']['parts'][0]['text']
+        return ai_text.strip()
+        
     except Exception as e:
-        print(f"Gemini API Error: {e}")
+        print(f"[!] Gemini API Error: {e}")
         return "Go team Attack at the knightmares! 🐴⚔️"
 
 def monitor_team_chat():
-    # Utilizing the streaming API instead of history fetching to prevent 404 blocks
-    url = f"https://lichess.org/api/team/{TEAM_ID}/chat"
-    print(f"Opening live stream chat pipeline for {TEAM_ID}...")
+    """Polls the team chat endpoint and processes new entries securely."""
+    # Lichess endpoint to fetch recent chat log history
+    url = f"https://lichess.org{TEAM_ID}/chat"
+    print(f"[*] Monitoring chat pipeline for team: {TEAM_ID}...")
+    
+    last_processed_sig = None
     
     while True:
         try:
-            with requests.get(url, headers=LICHESS_HEADERS, stream=True, timeout=60) as response:
-                if response.status_code == 200:
-                    for line in response.iter_lines():
-                        if line:
-                            msg = json.loads(line.decode("utf-8"))
-                            sender = msg.get("username", "")
-                            text = msg.get("text", "").strip()
-                            
-                            if sender and sender.lower() != BOT_USERNAME.lower() and text:
-                                print(f"-> Stream Event from [{sender}]: {text}")
-                                reply_text = get_ai_chat_response(sender, text)
-                                status = send_private_message(sender, reply_text)
-                                print(f"-> Sent PM to {sender} | Status: {status}")
-                else:
-                    print(f"Server returned status error code: {response.status_code}")
-                    time.sleep(10)
+            # Pull down the last 5 messages from the chat log
+            response = requests.get(url, headers=LICHESS_HEADERS, params={"max": 5})
+            
+            if response.status_code == 200:
+                lines = response.text.strip().split("\n")
+                if not lines or lines == ['']:
+                    time.sleep(4)
+                    continue
+                
+                # Isolate the most recent line written in the chat
+                latest_msg = json.loads(lines[-1])
+                sender = latest_msg.get("username", "")
+                text = latest_msg.get("text", "").strip()
+                
+                # Unique signature to know if this message is brand new
+                current_sig = f"{sender}_{text}"
+                
+                # First boot configuration: sync with the timeline without replying retrospectively
+                if last_processed_sig is None:
+                    last_processed_sig = current_sig
+                    print("[*] Synchronized with live timeline. Awaiting fresh inputs...")
+                
+                # Triggered when a completely new chat signature registers
+                elif current_sig != last_processed_sig:
+                    last_processed_sig = current_sig
+                    
+                    # Verify the message wasn't posted by our own bot account
+                    if sender and sender.lower() != MY_USERNAME.lower() and text:
+                        print(f"[Team Chat] {sender}: {text}")
+                        
+                        # Generate the AI response
+                        reply_text = get_ai_chat_response(sender, text)
+                        
+                        # Format the reply to tag the player who asked
+                        final_reply = f"@{sender} {reply_text}"
+                        
+                        # Ship it out to the team chat page
+                        status = post_to_team_chat(final_reply)
+                        print(f" -> Posted reply response | HTTP Status: {status}")
+                        
+            else:
+                print(f"[!] Lichess API returned error flag: {response.status_code}")
+                
         except Exception as e:
-            print(f"Stream dropped ({e}). Reconnecting in 5 seconds...")
-            time.sleep(5)
+            print(f"[!] Cycle execution error: {e}")
+            
+        # Wait 4 seconds before reading the chat again to avoid 429 rate limit bans
+        time.sleep(4)
 
 if __name__ == "__main__":
     monitor_team_chat()
