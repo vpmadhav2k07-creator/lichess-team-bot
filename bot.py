@@ -26,7 +26,7 @@ Never offer to play games. Never give tactical advice or live game evaluations.
 
 def send_private_message(username, text):
     """Sends a private message directly to a user's Lichess inbox."""
-    url = f"https://lichess.org/api/inbox{username}"
+    url = f"https://lichess.org/api/inbox/{username}"
     data = {"text": text}
     try:
         response = requests.post(url, headers=LICHESS_HEADERS, data=data)
@@ -36,7 +36,7 @@ def send_private_message(username, text):
         return 500
 
 def get_ai_chat_response(player_name, player_message):
-    """Generates an answer using the direct Google Gemini 2.5 Flash API."""
+    """Generates an answer using the direct Google Gemini 1.5 Flash API."""
       url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 
     payload = {
