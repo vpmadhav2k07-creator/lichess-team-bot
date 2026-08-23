@@ -3,9 +3,9 @@ import time
 import requests
 
 # Configuration
-LICHESS_TOKEN = "YOUR_LICHESS_BOT_TOKEN"  
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE"
-BOT_USERNAME = "Ask-AATK-bot"
+LICHESS_TOKEN = "" 
+GEMINI_API_KEY = "AQ.Ab8RN6LZz0DezgnfO3tNKVyv8VTEobJC_lpOPKJzyPgCzNr8cA"
+BOT_USERNAME = "MahiMahadev-2012"
 TEAM_ID = "attack-at-the-knightmares"
 
 LICHESS_HEADERS = {
