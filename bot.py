@@ -43,47 +43,82 @@ def get_ai_announcement():
         return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
     except Exception as e:
         print(f"[!] Gemini Error: {e}")
+        print("[*] Using fallback announcement...")
         return "Join our weekly matches team! Let's conquer the board! 🐴⚔️"
 
 
+def send_team_message(text):
+    """Send message to team using the correct API endpoint."""
+    # Try multiple endpoint variations
+    endpoints = [
+        f"https://lichess.org/api/team/{TEAM_ID}/pm",  # Direct PM endpoint
+        f"https://lichess.org/api/team/{TEAM_ID}/bulletin",  # Bulletin board
+    ]
+    
+    payload_data = {"text": text}
+    
+    for url in endpoints:
+        try:
+            print(f"[*] Trying endpoint: {url}")
+            response = requests.post(url, headers=LICHESS_HEADERS, data=payload_data, timeout=10)
+            
+            if response.status_code in [200, 204]:
+                print(f"[SUCCESS] Message sent via {url}!")
+                return True
+            else:
+                print(f"[!] Endpoint failed with status {response.status_code}")
+                
+        except Exception as e:
+            print(f"[!] Error with {url}: {e}")
+    
+    return False
+
 def broadcast_private_msg_to_team():
-    """Sends an announcement to team members via Lichess bulletin board."""
-    url = f"https://lichess.org/api/team/{TEAM_ID}/bulletin"
+    """Sends an announcement to team members."""
     announcement_text = get_ai_announcement()
-    
-    print(f"[*] Drafting Team Announcement: '{announcement_text}'")
-    
-    payload_data = {
-        "text": announcement_text
-    }
-    
-    try:
-        response = requests.post(url, headers=LICHESS_HEADERS, data=payload_data)
-        if response.status_code == 200:
-            print(f"[SUCCESS] Announcement posted to team bulletin!")
-        else:
-            print(f"[!] Team Announcement Rejected: HTTP Status {response.status_code}")
-            print(f"    Response: {response.text}")
-    except Exception as e:
-        print(f"[!] Failed to post team announcement: {e}")
+    print(f"\n[*] Broadcasting: '{announcement_text}'")
+    send_team_message(announcement_text)
 
 def run_bot_monitor():
     print("[*] Launching Lichess Team Management Automation Engine...")
+    print(f"[*] Team ID: {TEAM_ID}")
+    print(f"[*] Token: {LICHESS_TOKEN[:10]}...")
     
+    # Test connection first
+    try:
+        test_response = requests.get("https://lichess.org/api/account", headers=LICHESS_HEADERS, timeout=10)
+        if test_response.status_code == 200:
+            username = test_response.json().get('username')
+            print(f"[✓] Connected as: {username}")
+        else:
+            print(f"[!] Connection test failed: {test_response.status_code}")
+            print("[!] Check your LICHESS_TOKEN in .env file")
+            return
+    except Exception as e:
+        print(f"[!] Failed to connect to Lichess: {e}")
+        return
+    
+    # Send first announcement
     broadcast_private_msg_to_team()
     
-    print("[*] Automation loop running successfully!")
+    print("\n[*] Automation loop running successfully!")
+    print("[*] Press Ctrl+C to stop\n")
+    
     while True:
         try:
-            test_response = requests.get("https://lichess.org/api/account", headers=LICHESS_HEADERS)
+            time.sleep(30)
+            test_response = requests.get("https://lichess.org/api/account", headers=LICHESS_HEADERS, timeout=10)
             if test_response.status_code == 200:
-                print(f"[Heartbeat Ping]: Verified connection for account: {test_response.json().get('username')}")
+                username = test_response.json().get('username')
+                print(f"[Heartbeat]: Connection verified for {username}")
             else:
-                print(f"[!] Lichess validation warning code: {test_response.status_code}")
+                print(f"[!] Heartbeat failed: {test_response.status_code}")
+                
+        except KeyboardInterrupt:
+            print("\n[*] Bot stopped by user")
+            break
         except Exception as e:
-            print(f"[!] Communication error: {e}")
-            
-        time.sleep(30)
+            print(f"[!] Heartbeat error: {e}")
 
 if __name__ == "__main__":
     run_bot_monitor()
