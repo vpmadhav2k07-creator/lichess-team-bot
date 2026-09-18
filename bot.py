@@ -88,11 +88,7 @@ def get_ai_announcement():
 
 
 def send_team_message(message):
-    """Send a private update to every team member.
-
-    Lichess documents this endpoint as /team/{teamId}/pm-all and
-    requires the form field named 'message' plus the team:lead scope.
-    """
+    """Send a private update to every team member."""
     url = f"https://lichess.org/team/{TEAM_ID}/pm-all"
     try:
         response = requests.post(
