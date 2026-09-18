@@ -1,124 +1,133 @@
 import os
-import json
 import time
+
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()  # Load from .env file
+load_dotenv()
 
 # =====================================================================
-# ⚙️ CONFIGURATION
+# Configuration
 # =====================================================================
 LICHESS_TOKEN = os.getenv("LICHESS_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 TEAM_ID = os.getenv("TEAM_ID", "attack-at-the-knightmares")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
-if not LICHESS_TOKEN or not GEMINI_API_KEY:
-    raise ValueError("ERROR: LICHESS_TOKEN and GEMINI_API_KEY must be set in .env file")
-# =====================================================================
+if not LICHESS_TOKEN:
+    raise ValueError("LICHESS_TOKEN is missing. Add it to .env")
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY is missing. Add it to .env")
+if not TEAM_ID:
+    raise ValueError("TEAM_ID is missing. Add it to .env")
 
 LICHESS_HEADERS = {
     "Authorization": f"Bearer {LICHESS_TOKEN}",
-    "Accept": "application/json"
+    "Accept": "application/json",
 }
 
 GEMINI_HEADERS = {
     "x-goog-api-key": GEMINI_API_KEY,
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
 }
 
-SYSTEM_INSTRUCTION = "You are the AI announcer for the Lichess team 'Attack at the knightmares'. Draft a very short, hyper-hype weekly welcome greeting or match alert for your team. Keep it under 2 sentences. Be enthusiastic and fun!"
+SYSTEM_INSTRUCTION = (
+    "You are the AI announcer for the Lichess team "
+    "'Attack at the knightmares'. Write one very short, exciting weekly "
+    "welcome greeting or match alert. Keep it under two sentences."
+)
+FALLBACK_ANNOUNCEMENT = "Join our weekly matches! Let's conquer the board! 🐴⚔️"
+
 
 def get_ai_announcement():
-    """Generates the team broadcast text using Google Gemini API."""
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-    
+    """Generate an announcement with the Gemini Developer API."""
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent"
+    )
     payload = {
         "contents": [{"parts": [{"text": SYSTEM_INSTRUCTION}]}],
-        "generationConfig": {"temperature": 0.8, "maxOutputTokens": 100}
+        "generationConfig": {"temperature": 0.8, "maxOutputTokens": 100},
     }
+
     try:
-        response = requests.post(url, json=payload, headers=GEMINI_HEADERS, timeout=10)
+        response = requests.post(
+            url, json=payload, headers=GEMINI_HEADERS, timeout=20
+        )
         response.raise_for_status()
-        return response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-    except Exception as e:
-        print(f"[!] Gemini Error: {e}")
+        data = response.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        return text or FALLBACK_ANNOUNCEMENT
+    except (requests.RequestException, KeyError, IndexError, TypeError, ValueError) as exc:
+        print(f"[!] Gemini error: {exc}")
+        if "404" in str(exc):
+            print(f"[!] Check GEMINI_MODEL={GEMINI_MODEL!r} and your API key.")
         print("[*] Using fallback announcement...")
-        return "Join our weekly matches team! Let's conquer the board! 🐴⚔️"
+        return FALLBACK_ANNOUNCEMENT
 
 
-def send_team_message(text):
-    """Send message to team using the correct API endpoint."""
-    # Try multiple endpoint variations
-    endpoints = [
-        f"https://lichess.org/api/team/{TEAM_ID}/pm",  # Direct PM endpoint
-        f"https://lichess.org/api/team/{TEAM_ID}/bulletin",  # Bulletin board
-    ]
-    
-    payload_data = {"text": text}
-    
-    for url in endpoints:
-        try:
-            print(f"[*] Trying endpoint: {url}")
-            response = requests.post(url, headers=LICHESS_HEADERS, data=payload_data, timeout=10)
-            
-            if response.status_code in [200, 204]:
-                print(f"[SUCCESS] Message sent via {url}!")
-                return True
-            else:
-                print(f"[!] Endpoint failed with status {response.status_code}")
-                
-        except Exception as e:
-            print(f"[!] Error with {url}: {e}")
-    
-    return False
+def send_team_announcement(text):
+    """Post an announcement to the team as a team leader."""
+    url = f"https://lichess.org/api/team/{TEAM_ID}/announce"
 
-def broadcast_private_msg_to_team():
-    """Sends an announcement to team members."""
-    announcement_text = get_ai_announcement()
-    print(f"\n[*] Broadcasting: '{announcement_text}'")
-    send_team_message(announcement_text)
+    try:
+        response = requests.post(
+            url,
+            headers=LICHESS_HEADERS,
+            data={"text": text},
+            timeout=20,
+        )
+        if response.status_code in (200, 201, 204):
+            print("[SUCCESS] Announcement posted to the team!")
+            return True
+
+        print(f"[!] Lichess announcement rejected: HTTP {response.status_code}")
+        print(f"    Response: {response.text[:500]}")
+        if response.status_code in (401, 403):
+            print("[!] Ensure the token belongs to a team leader and has team:write scope.")
+        return False
+    except requests.RequestException as exc:
+        print(f"[!] Failed to post team announcement: {exc}")
+        return False
+
+
+def check_lichess_account():
+    """Verify that the Lichess token is valid and return the username."""
+    response = requests.get(
+        "https://lichess.org/api/account",
+        headers=LICHESS_HEADERS,
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json().get("username", "unknown")
+
 
 def run_bot_monitor():
     print("[*] Launching Lichess Team Management Automation Engine...")
-    print(f"[*] Team ID: {TEAM_ID}")
-    print(f"[*] Token: {LICHESS_TOKEN[:10]}...")
-    
-    # Test connection first
+
     try:
-        test_response = requests.get("https://lichess.org/api/account", headers=LICHESS_HEADERS, timeout=10)
-        if test_response.status_code == 200:
-            username = test_response.json().get('username')
-            print(f"[✓] Connected as: {username}")
-        else:
-            print(f"[!] Connection test failed: {test_response.status_code}")
-            print("[!] Check your LICHESS_TOKEN in .env file")
-            return
-    except Exception as e:
-        print(f"[!] Failed to connect to Lichess: {e}")
+        username = check_lichess_account()
+        print(f"[✓] Connected as: {username}")
+    except (requests.RequestException, ValueError) as exc:
+        print(f"[!] Lichess connection failed: {exc}")
+        print("[!] Check LICHESS_TOKEN in .env")
         return
-    
-    # Send first announcement
-    broadcast_private_msg_to_team()
-    
-    print("\n[*] Automation loop running successfully!")
-    print("[*] Press Ctrl+C to stop\n")
-    
-    while True:
-        try:
+
+    announcement = get_ai_announcement()
+    print(f"[*] Drafting Team Announcement: {announcement!r}")
+    send_team_announcement(announcement)
+
+    print("[*] Automation loop running. Press Ctrl+C to stop.")
+    try:
+        while True:
             time.sleep(30)
-            test_response = requests.get("https://lichess.org/api/account", headers=LICHESS_HEADERS, timeout=10)
-            if test_response.status_code == 200:
-                username = test_response.json().get('username')
-                print(f"[Heartbeat]: Connection verified for {username}")
-            else:
-                print(f"[!] Heartbeat failed: {test_response.status_code}")
-                
-        except KeyboardInterrupt:
-            print("\n[*] Bot stopped by user")
-            break
-        except Exception as e:
-            print(f"[!] Heartbeat error: {e}")
+            try:
+                print(f"[Heartbeat]: Connection verified for {check_lichess_account()}")
+            except (requests.RequestException, ValueError) as exc:
+                print(f"[!] Heartbeat error: {exc}")
+    except KeyboardInterrupt:
+        print("\n[*] Bot stopped by user")
+
 
 if __name__ == "__main__":
     run_bot_monitor()
